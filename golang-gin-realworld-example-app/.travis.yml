@@ -1,0 +1,21 @@
+language: go
+go:
+  - 1.16.x
+  - 1.17.x
+  - 1.18.x
+  - 1.19.x
+  - 1.20.x
+
+services:
+  - mongodb
+
+before_install:
+  - go get -u github.com/gorilla/mux
+  - go get -u github.com/stretchr/testify
+
+script:
+  - go test -v ./... -coverprofile=coverage.out
+  - go tool cover -html=coverage.out -o coverage.html
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

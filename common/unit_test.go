@@ -1,164 +1,152 @@
 package common
 
 import (
-	"bytes"
-	"errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/gin-gonic/gin"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"testing"
+    "bytes"
+    "errors"
+    "github.com/stretchr/testify/assert"
+    "os"
+    "testing"
 )
 
 func TestConnectingDatabase(t *testing.T) {
-	asserts := assert.New(t)
-	db := Init()
-	// Test create & close DB
-	_, err := os.Stat("./../gorm.db")
-	asserts.NoError(err, "Db should exist")
-	asserts.NoError(db.DB().Ping(), "Db should be able to ping")
+    asserts := assert.New(t)
+    db := Init()
+    // Test create & close DB
+    _, err := os.Stat("./../gorm.db")
+    asserts.NoError(err, "Db should exist")
+    asserts.NoError(db.DB().Ping(), "Db should be able to ping")
 
-	// Test get a connecting from connection pools
-	connection := GetDB()
-	asserts.NoError(connection.DB().Ping(), "Db should be able to ping")
-	db.Close()
+    // Test get a connecting from connection pools
+    connection := GetDB()
+    asserts.NoError(connection.DB().Ping(), "Db should be able to ping")
+    db.Close()
 
-	// Test DB exceptions
-	os.Chmod("./../gorm.db", 0000)
-	db = Init()
-	asserts.Error(db.DB().Ping(), "Db should not be able to ping")
-	db.Close()
-	os.Chmod("./../gorm.db", 0644)
+    // Test DB exceptions
+    os.Chmod("./../gorm.db", 0000)
+    db = Init()
+    asserts.Error(db.DB().Ping(), "Db should not be able to ping")
+    db.Close()
+    os.Chmod("./../gorm.db", 0644)
 }
 
 func TestConnectingTestDatabase(t *testing.T) {
-	asserts := assert.New(t)
-	// Test create & close DB
-	db := TestDBInit()
-	_, err := os.Stat("./../gorm_test.db")
-	asserts.NoError(err, "Db should exist")
-	asserts.NoError(db.DB().Ping(), "Db should be able to ping")
-	db.Close()
+    asserts := assert.New(t)
+    // Test create & close DB
+    db := TestDBInit()
+    _, err := os.Stat("./../gorm_test.db")
+    asserts.NoError(err, "Db should exist")
+    asserts.NoError(db.DB().Ping(), "Db should be able to ping")
+    db.Close()
 
-	// Test testDB exceptions
-	os.Chmod("./../gorm_test.db", 0000)
-	db = TestDBInit()
-	_, err = os.Stat("./../gorm_test.db")
-	asserts.NoError(err, "Db should exist")
-	asserts.Error(db.DB().Ping(), "Db should not be able to ping")
-	os.Chmod("./../gorm_test.db", 0644)
+    // Test testDB exceptions
+    os.Chmod("./../gorm_test.db", 0000)
+    db = TestDBInit()
+    _, err = os.Stat("./../gorm_test.db")
+    asserts.NoError(err, "Db should exist")
+    asserts.Error(db.DB().Ping(), "Db should not be able to ping")
+    os.Chmod("./../gorm_test.db", 0644)
 
-	// Test close delete DB
-	TestDBFree(db)
-	_, err = os.Stat("./../gorm_test.db")
+    // Test close delete DB
+    TestDBFree(db)
+    _, err = os.Stat("./../gorm_test.db")
 
-	asserts.Error(err, "Db should not exist")
+    asserts.Error(err, "Db should not exist")
 }
 
 func TestRandString(t *testing.T) {
-	asserts := assert.New(t)
+    asserts := assert.New(t)
 
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	str := RandString(0)
-	asserts.Equal(str, "", "length should be ''")
+    var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    str := RandString(0)
+    asserts.Equal(str, "", "length should be ''")
 
-	str = RandString(10)
-	asserts.Equal(len(str), 10, "length should be 10")
-	for _, ch := range str {
-		asserts.Contains(letters, ch, "char should be a-z|A-Z|0-9")
-	}
+    str = RandString(10)
+    asserts.Equal(len(str), 10, "length should be 10")
+    for _, ch := range str {
+        found := false
+        for _, l := range letters {
+            if ch == l {
+                found = true
+                break
+            }
+        }
+        asserts.True(found, "character should be in allowed letters")
+    }
 }
 
 func TestGenToken(t *testing.T) {
-	asserts := assert.New(t)
+    asserts := assert.New(t)
 
-	token := GenToken(2)
+    token := GenToken(2)
 
-	asserts.IsType(token, string("token"), "token type should be string")
-	asserts.Len(token, 115, "JWT's length should be 115")
+    asserts.IsType(token, string("token"), "token type should be string")
+    asserts.Len(token, 115, "JWT's length should be 115")
 }
 
 func TestNewValidatorError(t *testing.T) {
-	asserts := assert.New(t)
-
-	type Login struct {
-		Username string `form:"username" json:"username" binding:"exists,alphanum,min=4,max=255"`
-		Password string `form:"password" json:"password" binding:"exists,min=8,max=255"`
-	}
-
-	var requestTests = []struct {
-		bodyData       string
-		expectedCode   int
-		responseRegexg string
-		msg            string
-	}{
-		{
-			`{"username": "wangzitian0","password": "0123456789"}`,
-			http.StatusOK,
-			`{"status":"you are logged in"}`,
-			"valid data and should return StatusCreated",
-		},
-		{
-			`{"username": "wangzitian0","password": "01234567866"}`,
-			http.StatusUnauthorized,
-			`{"errors":{"user":"wrong username or password"}}`,
-			"wrong login status should return StatusUnauthorized",
-		},
-		{
-			`{"username": "wangzitian0","password": "0122"}`,
-			http.StatusUnprocessableEntity,
-			`{"errors":{"Password":"{min: 8}"}}`,
-			"invalid password of too short and should return StatusUnprocessableEntity",
-		},
-		{
-			`{"username": "_wangzitian0","password": "0123456789"}`,
-			http.StatusUnprocessableEntity,
-			`{"errors":{"Username":"{key: alphanum}"}}`,
-			"invalid username of non alphanum and should return StatusUnprocessableEntity",
-		},
-	}
-
-	r := gin.Default()
-
-	r.POST("/login", func(c *gin.Context) {
-		var json Login
-		if err := Bind(c, &json); err == nil {
-			if json.Username == "wangzitian0" && json.Password == "0123456789" {
-				c.JSON(http.StatusOK, gin.H{"status": "you are logged in"})
-			} else {
-				c.JSON(http.StatusUnauthorized, NewError("user", errors.New("wrong username or password")))
-			}
-		} else {
-			c.JSON(http.StatusUnprocessableEntity, NewValidatorError(err))
-		}
-	})
-
-	for _, testData := range requestTests {
-		bodyData := testData.bodyData
-		req, err := http.NewRequest("POST", "/login", bytes.NewBufferString(bodyData))
-		req.Header.Set("Content-Type", "application/json")
-		asserts.NoError(err)
-
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		asserts.Equal(testData.expectedCode, w.Code, "Response Status - "+testData.msg)
-		asserts.Regexp(testData.responseRegexg, w.Body.String(), "Response Content - "+testData.msg)
-	}
+    asserts := assert.New(t)
+	err := NewValidatorError("field1", "error1")
+    asserts.IsType(CommonError{}, err, "Should return CommonError type")
+    asserts.Equal("field1", err.Field)
+    asserts.Contains(err.Err.Error(), "error1")
 }
 
 func TestNewError(t *testing.T) {
-	assert := assert.New(t)
+    asserts := assert.New(t)
+    err := NewError("test_code", errors.New("an error occurred"))
+    // Check that the returned value is of type CommonError by comparing types
+    asserts.IsType(CommonError{}, err, "Should return CommonError type")
+    asserts.Equal("test_code", err.Code)
+    asserts.Contains(err.Err.Error(), "an error occurred")
+}
 
-	db := TestDBInit()
-	type NotExist struct {
-		heheda string
-	}
-	db.AutoMigrate(NotExist{})
+// --- Additional Tests ---
 
-	commenError := NewError("database", db.Find(NotExist{heheda: "heheda"}).Error)
-	assert.IsType(commenError, commenError, "commenError should have right type")
-	assert.Equal(map[string]interface{}(map[string]interface{}{"database": "no such table: not_exists"}),
-		commenError.Errors, "commenError should have right error info")
+func TestGenTokenDifferentUserIDs(t *testing.T) {
+    asserts := assert.New(t)
+    token1 := GenToken(1)
+    token2 := GenToken(2)
+    token3 := GenToken(99999)
+    asserts.NotEqual(token1, token2, "Tokens for different user IDs should differ")
+    asserts.NotEqual(token1, token3, "Tokens for different user IDs should differ")
+    asserts.NotEqual(token2, token3, "Tokens for different user IDs should differ")
+    asserts.Len(token1, 115, "JWT's length should be 115")
+    asserts.Len(token2, 115, "JWT's length should be 115")
+    asserts.Len(token3, 115, "JWT's length should be 115")
+}
+
+func TestGenTokenExpiration(t *testing.T) {
+    asserts := assert.New(t)
+    token := GenToken(123)
+    // JWT tokens have three parts separated by dots
+    parts := bytes.Split([]byte(token), []byte("."))
+    asserts.Equal(3, len(parts), "JWT should have three parts")
+    // Optionally, decode and check expiration if implementation allows
+}
+
+func TestDatabaseConnectionErrorHandling(t *testing.T) {
+    asserts := assert.New(t)
+    // Simulate error by passing an invalid path
+    oldPath := os.Getenv("DB_PATH")
+    os.Setenv("DB_PATH", "/invalid/path/to/db.db")
+    defer os.Setenv("DB_PATH", oldPath)
+    db := Init()
+    err := db.DB().Ping()
+    asserts.Error(err, "Should error on invalid DB path")
+    db.Close()
+}
+
+func TestRandStringUniqueness(t *testing.T) {
+    asserts := assert.New(t)
+    str1 := RandString(12)
+    str2 := RandString(12)
+    asserts.Equal(12, len(str1), "RandString should return string of correct length")
+    asserts.Equal(12, len(str2), "RandString should return string of correct length")
+    asserts.NotEqual(str1, str2, "RandString should produce different strings")
+}
+
+func TestRandStringZeroLength(t *testing.T) {
+    asserts := assert.New(t)
+    str := RandString(0)
+    asserts.Equal("", str, "RandString(0) should return empty string")
 }

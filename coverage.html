@@ -1,0 +1,611 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>users: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">realworld-backend/users/middlewares.go (100.0%)</option>
+				
+				<option value="file1">realworld-backend/users/models.go (100.0%)</option>
+				
+				<option value="file2">realworld-backend/users/routers.go (100.0%)</option>
+				
+				<option value="file3">realworld-backend/users/serializers.go (100.0%)</option>
+				
+				<option value="file4">realworld-backend/users/validators.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package users
+
+import (
+        "github.com/dgrijalva/jwt-go"
+        "github.com/dgrijalva/jwt-go/request"
+        "realworld-backend/common"
+        "github.com/gin-gonic/gin"
+        "net/http"
+        "strings"
+)
+
+// Strips 'TOKEN ' prefix from token string
+func stripBearerPrefixFromTokenString(tok string) (string, error) <span class="cov8" title="1">{
+        // Should be a bearer token
+        if len(tok) &gt; 5 &amp;&amp; strings.ToUpper(tok[0:6]) == "TOKEN " </span><span class="cov8" title="1">{
+                return tok[6:], nil
+        }</span>
+        <span class="cov8" title="1">return tok, nil</span>
+}
+
+// Extract  token from Authorization header
+// Uses PostExtractionFilter to strip "TOKEN " prefix from header
+var AuthorizationHeaderExtractor = &amp;request.PostExtractionFilter{
+        request.HeaderExtractor{"Authorization"},
+        stripBearerPrefixFromTokenString,
+}
+
+// Extractor for OAuth2 access tokens.  Looks in 'Authorization'
+// header then 'access_token' argument for a token.
+var MyAuth2Extractor = &amp;request.MultiExtractor{
+        AuthorizationHeaderExtractor,
+        request.ArgumentExtractor{"access_token"},
+}
+
+// A helper to write user_id and user_model to the context
+func UpdateContextUserModel(c *gin.Context, my_user_id uint) <span class="cov8" title="1">{
+        var myUserModel UserModel
+        if my_user_id != 0 </span><span class="cov8" title="1">{
+                db := common.GetDB()
+                db.First(&amp;myUserModel, my_user_id)
+        }</span>
+        <span class="cov8" title="1">c.Set("my_user_id", my_user_id)
+        c.Set("my_user_model", myUserModel)</span>
+}
+
+// You can custom middlewares yourself as the doc: https://github.com/gin-gonic/gin#custom-middleware
+//  r.Use(AuthMiddleware(true))
+func AuthMiddleware(auto401 bool) gin.HandlerFunc <span class="cov8" title="1">{
+        return func(c *gin.Context) </span><span class="cov8" title="1">{
+                UpdateContextUserModel(c, 0)
+                token, err := request.ParseFromRequest(c.Request, MyAuth2Extractor, func(token *jwt.Token) (interface{}, error) </span><span class="cov8" title="1">{
+                        b := ([]byte(common.NBSecretPassword))
+                        return b, nil
+                }</span>)
+                <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+                        if auto401 </span><span class="cov8" title="1">{
+                                c.AbortWithError(http.StatusUnauthorized, err)
+                        }</span>
+                        <span class="cov8" title="1">return</span>
+                }
+                <span class="cov8" title="1">if claims, ok := token.Claims.(jwt.MapClaims); ok &amp;&amp; token.Valid </span><span class="cov8" title="1">{
+                        my_user_id := uint(claims["id"].(float64))
+                        //fmt.Println(my_user_id,claims["id"])
+                        UpdateContextUserModel(c, my_user_id)
+                }</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package users
+
+import (
+        "errors"
+        "github.com/jinzhu/gorm"
+        "realworld-backend/common"
+        "golang.org/x/crypto/bcrypt"
+)
+
+// Models should only be concerned with database schema, more strict checking should be put in validator.
+//
+// More detail you can find here: http://jinzhu.me/gorm/models.html#model-definition
+//
+// HINT: If you want to split null and "", you should use *string instead of string.
+type UserModel struct {
+        ID           uint    `gorm:"primary_key"`
+        Username     string  `gorm:"column:username"`
+        Email        string  `gorm:"column:email;unique_index"`
+        Bio          string  `gorm:"column:bio;size:1024"`
+        Image        *string `gorm:"column:image"`
+        PasswordHash string  `gorm:"column:password;not null"`
+}
+
+// A hack way to save ManyToMany relationship,
+// gorm will build the alias as FollowingBy &lt;-&gt; FollowingByID &lt;-&gt; "following_by_id".
+//
+// DB schema looks like: id, created_at, updated_at, deleted_at, following_id, followed_by_id.
+//
+// Retrieve them by:
+//         db.Where(FollowModel{ FollowingID:  v.ID, FollowedByID: u.ID, }).First(&amp;follow)
+//         db.Where(FollowModel{ FollowedByID: u.ID, }).Find(&amp;follows)
+//
+// More details about gorm.Model: http://jinzhu.me/gorm/models.html#conventions
+type FollowModel struct {
+        gorm.Model
+        Following    UserModel
+        FollowingID  uint
+        FollowedBy   UserModel
+        FollowedByID uint
+}
+
+// Migrate the schema of database if needed
+func AutoMigrate() <span class="cov8" title="1">{
+        db := common.GetDB()
+
+        db.AutoMigrate(&amp;UserModel{})
+        db.AutoMigrate(&amp;FollowModel{})
+}</span>
+
+// What's bcrypt? https://en.wikipedia.org/wiki/Bcrypt
+// Golang bcrypt doc: https://godoc.org/golang.org/x/crypto/bcrypt
+// You can change the value in bcrypt.DefaultCost to adjust the security index.
+//         err := userModel.setPassword("password0")
+func (u *UserModel) setPassword(password string) error <span class="cov8" title="1">{
+        if len(password) == 0 </span><span class="cov8" title="1">{
+                return errors.New("password should not be empty!")
+        }</span>
+        <span class="cov8" title="1">bytePassword := []byte(password)
+        // Make sure the second param `bcrypt generator cost` between [4, 32)
+        passwordHash, _ := bcrypt.GenerateFromPassword(bytePassword, bcrypt.DefaultCost)
+        u.PasswordHash = string(passwordHash)
+        return nil</span>
+}
+
+// Database will only save the hashed string, you should check it by util function.
+//         if err := serModel.checkPassword("password0"); err != nil { password error }
+func (u *UserModel) checkPassword(password string) error <span class="cov8" title="1">{
+        bytePassword := []byte(password)
+        byteHashedPassword := []byte(u.PasswordHash)
+        return bcrypt.CompareHashAndPassword(byteHashedPassword, bytePassword)
+}</span>
+
+// You could input the conditions and it will return an UserModel in database with error info.
+//         userModel, err := FindOneUser(&amp;UserModel{Username: "username0"})
+func FindOneUser(condition interface{}) (UserModel, error) <span class="cov8" title="1">{
+        db := common.GetDB()
+        var model UserModel
+        err := db.Where(condition).First(&amp;model).Error
+        return model, err
+}</span>
+
+// You could input an UserModel which will be saved in database returning with error info
+//         if err := SaveOne(&amp;userModel); err != nil { ... }
+func SaveOne(data interface{}) error <span class="cov8" title="1">{
+        db := common.GetDB()
+        err := db.Save(data).Error
+        return err
+}</span>
+
+// You could update properties of an UserModel to database returning with error info.
+//  err := db.Model(userModel).Update(UserModel{Username: "wangzitian0"}).Error
+func (model *UserModel) Update(data interface{}) error <span class="cov8" title="1">{
+        db := common.GetDB()
+        err := db.Model(model).Update(data).Error
+        return err
+}</span>
+
+// You could add a following relationship as userModel1 following userModel2
+//         err = userModel1.following(userModel2)
+func (u UserModel) following(v UserModel) error <span class="cov8" title="1">{
+        db := common.GetDB()
+        var follow FollowModel
+        err := db.FirstOrCreate(&amp;follow, &amp;FollowModel{
+                FollowingID:  v.ID,
+                FollowedByID: u.ID,
+        }).Error
+        return err
+}</span>
+
+// You could check whether  userModel1 following userModel2
+//         followingBool = myUserModel.isFollowing(self.UserModel)
+func (u UserModel) isFollowing(v UserModel) bool <span class="cov8" title="1">{
+        db := common.GetDB()
+        var follow FollowModel
+        db.Where(FollowModel{
+                FollowingID:  v.ID,
+                FollowedByID: u.ID,
+        }).First(&amp;follow)
+        return follow.ID != 0
+}</span>
+
+// You could delete a following relationship as userModel1 following userModel2
+//         err = userModel1.unFollowing(userModel2)
+func (u UserModel) unFollowing(v UserModel) error <span class="cov8" title="1">{
+        db := common.GetDB()
+        err := db.Where(FollowModel{
+                FollowingID:  v.ID,
+                FollowedByID: u.ID,
+        }).Delete(FollowModel{}).Error
+        return err
+}</span>
+
+// You could get a following list of userModel
+//         followings := userModel.GetFollowings()
+func (u UserModel) GetFollowings() []UserModel <span class="cov8" title="1">{
+        db := common.GetDB()
+        tx := db.Begin()
+        var follows []FollowModel
+        var followings []UserModel
+        tx.Where(FollowModel{
+                FollowedByID: u.ID,
+        }).Find(&amp;follows)
+        for _, follow := range follows </span><span class="cov8" title="1">{
+                var userModel UserModel
+                tx.Model(&amp;follow).Related(&amp;userModel, "Following")
+                followings = append(followings, userModel)
+        }</span>
+        <span class="cov8" title="1">tx.Commit()
+        return followings</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package users
+
+import (
+        "errors"
+        "realworld-backend/common"
+        "github.com/gin-gonic/gin"
+        "net/http"
+)
+
+func UsersRegister(router *gin.RouterGroup) <span class="cov8" title="1">{
+        router.POST("/", UsersRegistration)
+        router.POST("/login", UsersLogin)
+}</span>
+
+func UserRegister(router *gin.RouterGroup) <span class="cov8" title="1">{
+        router.GET("/", UserRetrieve)
+        router.PUT("/", UserUpdate)
+}</span>
+
+func ProfileRegister(router *gin.RouterGroup) <span class="cov8" title="1">{
+        router.GET("/:username", ProfileRetrieve)
+        router.POST("/:username/follow", ProfileFollow)
+        router.DELETE("/:username/follow", ProfileUnfollow)
+}</span>
+
+func ProfileRetrieve(c *gin.Context) <span class="cov8" title="1">{
+        username := c.Param("username")
+        userModel, err := FindOneUser(&amp;UserModel{Username: username})
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, common.NewError("profile", errors.New("Invalid username")))
+                return
+        }</span>
+        <span class="cov8" title="1">profileSerializer := ProfileSerializer{c, userModel}
+        c.JSON(http.StatusOK, gin.H{"profile": profileSerializer.Response()})</span>
+}
+
+func ProfileFollow(c *gin.Context) <span class="cov8" title="1">{
+        username := c.Param("username")
+        userModel, err := FindOneUser(&amp;UserModel{Username: username})
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, common.NewError("profile", errors.New("Invalid username")))
+                return
+        }</span>
+        <span class="cov8" title="1">myUserModel := c.MustGet("my_user_model").(UserModel)
+        err = myUserModel.following(userModel)
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewError("database", err))
+                return
+        }</span>
+        <span class="cov8" title="1">serializer := ProfileSerializer{c, userModel}
+        c.JSON(http.StatusOK, gin.H{"profile": serializer.Response()})</span>
+}
+
+func ProfileUnfollow(c *gin.Context) <span class="cov8" title="1">{
+        username := c.Param("username")
+        userModel, err := FindOneUser(&amp;UserModel{Username: username})
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, common.NewError("profile", errors.New("Invalid username")))
+                return
+        }</span>
+        <span class="cov8" title="1">myUserModel := c.MustGet("my_user_model").(UserModel)
+
+        err = myUserModel.unFollowing(userModel)
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewError("database", err))
+                return
+        }</span>
+        <span class="cov8" title="1">serializer := ProfileSerializer{c, userModel}
+        c.JSON(http.StatusOK, gin.H{"profile": serializer.Response()})</span>
+}
+
+func UsersRegistration(c *gin.Context) <span class="cov8" title="1">{
+        userModelValidator := NewUserModelValidator()
+        if err := userModelValidator.Bind(c); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewValidatorError(err))
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := SaveOne(&amp;userModelValidator.userModel); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewError("database", err))
+                return
+        }</span>
+        <span class="cov8" title="1">c.Set("my_user_model", userModelValidator.userModel)
+        serializer := UserSerializer{c}
+        c.JSON(http.StatusCreated, gin.H{"user": serializer.Response()})</span>
+}
+
+func UsersLogin(c *gin.Context) <span class="cov8" title="1">{
+        loginValidator := NewLoginValidator()
+        if err := loginValidator.Bind(c); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewValidatorError(err))
+                return
+        }</span>
+        <span class="cov8" title="1">userModel, err := FindOneUser(&amp;UserModel{Email: loginValidator.userModel.Email})
+
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusForbidden, common.NewError("login", errors.New("Not Registered email or invalid password")))
+                return
+        }</span>
+
+        <span class="cov8" title="1">if userModel.checkPassword(loginValidator.User.Password) != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusForbidden, common.NewError("login", errors.New("Not Registered email or invalid password")))
+                return
+        }</span>
+        <span class="cov8" title="1">UpdateContextUserModel(c, userModel.ID)
+        serializer := UserSerializer{c}
+        c.JSON(http.StatusOK, gin.H{"user": serializer.Response()})</span>
+}
+
+func UserRetrieve(c *gin.Context) <span class="cov8" title="1">{
+        serializer := UserSerializer{c}
+        c.JSON(http.StatusOK, gin.H{"user": serializer.Response()})
+}</span>
+
+func UserUpdate(c *gin.Context) <span class="cov8" title="1">{
+        myUserModel := c.MustGet("my_user_model").(UserModel)
+        userModelValidator := NewUserModelValidatorFillWith(myUserModel)
+        if err := userModelValidator.Bind(c); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewValidatorError(err))
+                return
+        }</span>
+
+        <span class="cov8" title="1">userModelValidator.userModel.ID = myUserModel.ID
+        if err := myUserModel.Update(userModelValidator.userModel); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnprocessableEntity, common.NewError("database", err))
+                return
+        }</span>
+        <span class="cov8" title="1">UpdateContextUserModel(c, myUserModel.ID)
+        serializer := UserSerializer{c}
+        c.JSON(http.StatusOK, gin.H{"user": serializer.Response()})</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package users
+
+import (
+        "github.com/gin-gonic/gin"
+
+        "realworld-backend/common"
+)
+
+type ProfileSerializer struct {
+        C *gin.Context
+        UserModel
+}
+
+// Declare your response schema here
+type ProfileResponse struct {
+        ID        uint    `json:"-"`
+        Username  string  `json:"username"`
+        Bio       string  `json:"bio"`
+        Image     *string `json:"image"`
+        Following bool    `json:"following"`
+}
+
+// Put your response logic including wrap the userModel here.
+func (self *ProfileSerializer) Response() ProfileResponse <span class="cov8" title="1">{
+        myUserModel := self.C.MustGet("my_user_model").(UserModel)
+        profile := ProfileResponse{
+                ID:        self.ID,
+                Username:  self.Username,
+                Bio:       self.Bio,
+                Image:     self.Image,
+                Following: myUserModel.isFollowing(self.UserModel),
+        }
+        return profile
+}</span>
+
+type UserSerializer struct {
+        c *gin.Context
+}
+
+type UserResponse struct {
+        Username string  `json:"username"`
+        Email    string  `json:"email"`
+        Bio      string  `json:"bio"`
+        Image    *string `json:"image"`
+        Token    string  `json:"token"`
+}
+
+func (self *UserSerializer) Response() UserResponse <span class="cov8" title="1">{
+        myUserModel := self.c.MustGet("my_user_model").(UserModel)
+        user := UserResponse{
+                Username: myUserModel.Username,
+                Email:    myUserModel.Email,
+                Bio:      myUserModel.Bio,
+                Image:    myUserModel.Image,
+                Token:    common.GenToken(myUserModel.ID),
+        }
+        return user
+}</span>
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package users
+
+import (
+        "realworld-backend/common"
+        "github.com/gin-gonic/gin"
+)
+
+// *ModelValidator containing two parts:
+// - Validator: write the form/json checking rule according to the doc https://github.com/go-playground/validator
+// - DataModel: fill with data from Validator after invoking common.Bind(c, self)
+// Then, you can just call model.save() after the data is ready in DataModel.
+type UserModelValidator struct {
+        User struct {
+                Username string `form:"username" json:"username" binding:"required,alphanum,min=4,max=255"`
+                Email    string `form:"email" json:"email" binding:"required,email"`
+                Password string `form:"password" json:"password" binding:"required,min=8,max=255"`
+                Bio      string `form:"bio" json:"bio" binding:"max=1024"`
+                Image    string `form:"image" json:"image" binding:"omitempty,url"`
+        } `json:"user"`
+        userModel UserModel `json:"-"`
+}
+
+// There are some difference when you create or update a model, you need to fill the DataModel before
+// update so that you can use your origin data to cheat the validator.
+// BTW, you can put your general binding logic here such as setting password.
+func (self *UserModelValidator) Bind(c *gin.Context) error <span class="cov8" title="1">{
+        err := common.Bind(c, self)
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">self.userModel.Username = self.User.Username
+        self.userModel.Email = self.User.Email
+        self.userModel.Bio = self.User.Bio
+
+        if self.User.Password != common.NBRandomPassword </span><span class="cov8" title="1">{
+                self.userModel.setPassword(self.User.Password)
+        }</span>
+        <span class="cov8" title="1">if self.User.Image != "" </span><span class="cov8" title="1">{
+                self.userModel.Image = &amp;self.User.Image
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+// You can put the default value of a Validator here
+func NewUserModelValidator() UserModelValidator <span class="cov8" title="1">{
+        userModelValidator := UserModelValidator{}
+        //userModelValidator.User.Email ="w@g.cn"
+        return userModelValidator
+}</span>
+
+func NewUserModelValidatorFillWith(userModel UserModel) UserModelValidator <span class="cov8" title="1">{
+        userModelValidator := NewUserModelValidator()
+        userModelValidator.User.Username = userModel.Username
+        userModelValidator.User.Email = userModel.Email
+        userModelValidator.User.Bio = userModel.Bio
+        userModelValidator.User.Password = common.NBRandomPassword
+
+        if userModel.Image != nil </span><span class="cov8" title="1">{
+                userModelValidator.User.Image = *userModel.Image
+        }</span>
+        <span class="cov8" title="1">return userModelValidator</span>
+}
+
+type LoginValidator struct {
+        User struct {
+                Email    string `form:"email" json:"email" binding:"required,email"`
+                Password string `form:"password" json:"password" binding:"required,min=8,max=255"`
+        } `json:"user"`
+        userModel UserModel `json:"-"`
+}
+
+func (self *LoginValidator) Bind(c *gin.Context) error <span class="cov8" title="1">{
+        err := common.Bind(c, self)
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">self.userModel.Email = self.User.Email
+        return nil</span>
+}
+
+// You can put the default value of a Validator here
+func NewLoginValidator() LoginValidator <span class="cov8" title="1">{
+        loginValidator := LoginValidator{}
+        return loginValidator
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

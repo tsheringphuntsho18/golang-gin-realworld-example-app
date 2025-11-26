@@ -1,0 +1,60 @@
+package main
+
+import (
+    "log"
+    "net/http"
+    "github.com/gin-gonic/gin"
+)
+
+func main() {
+    router := gin.Default()
+
+    // User routes
+    router.POST("/api/users", createUser)
+    router.POST("/api/users/login", loginUser)
+
+    // Article routes
+    router.POST("/api/articles", createArticle)
+    router.GET("/api/articles/:id", getArticle)
+    router.PUT("/api/articles/:id", updateArticle)
+    router.DELETE("/api/articles/:id", deleteArticle)
+    router.POST("/api/articles/:id/favorite", favoriteArticle)
+    router.DELETE("/api/articles/:id/favorite", unfavoriteArticle)
+
+    // Start the server
+    if err := router.Run(":8080"); err != nil {
+        log.Fatal(err)
+    }
+}
+
+func createUser(c *gin.Context) {
+    // Implementation for creating a user
+}
+
+func loginUser(c *gin.Context) {
+    // Implementation for user login
+}
+
+func createArticle(c *gin.Context) {
+    // Implementation for creating an article
+}
+
+func getArticle(c *gin.Context) {
+    // Implementation for retrieving an article
+}
+
+func updateArticle(c *gin.Context) {
+    // Implementation for updating an article
+}
+
+func deleteArticle(c *gin.Context) {
+    // Implementation for deleting an article
+}
+
+func favoriteArticle(c *gin.Context) {
+    // Implementation for favoriting an article
+}
+
+func unfavoriteArticle(c *gin.Context) {
+    // Implementation for unfavoriting an article
+}
