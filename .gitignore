@@ -26,3 +26,4 @@ coverage.txt
 bak.*
 
 CLAUDE.md
+k6-tests/stress-test-results.json
